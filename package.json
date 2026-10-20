@@ -1,0 +1,8 @@
+{
+  "name": "mellu-inventario-work",
+  "private": true,
+  "version": "1.0.0",
+  "dependencies": {
+    "openai": "^6.0.0"
+  }
+}
