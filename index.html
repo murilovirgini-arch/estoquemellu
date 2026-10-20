@@ -196,20 +196,23 @@ var cooldownMain=false;
 var cooldownInv=false;
 var inventoryCorrections={};
 
-var syncQueue=[],syncBusy=false,syncTimer=null,syncError="",syncRetry=0;
+var syncQueue=[],syncBusy=false,syncTimer=null,syncError="",syncRetry=0,syncStorageBlocked=false;
 function restoreSyncQueue(){
   try{syncQueue=JSON.parse(localStorage.getItem("mellu_sync_queue_v1")||"[]");if(!Array.isArray(syncQueue))throw Error("Fila inválida");}
-  catch(e){syncError="Não foi possível ler os envios pendentes. Exporte as correções antes de continuar.";syncQueue=[];}
+  catch(e){syncStorageBlocked=true;syncError="Não foi possível ler os envios pendentes. Exporte as correções antes de continuar.";syncQueue=[];}
   renderSavedList();
 }
 function persistSyncQueue(){localStorage.setItem("mellu_sync_queue_v1",JSON.stringify(syncQueue));}
 function queueCorrection(code,record,recovery){
+  if(syncStorageBlocked)throw Error("A fila local não pôde ser lida. Exporte as correções antes de continuar.");
+  var originalQueue=syncQueue.slice();
+  if(!recovery)syncQueue=syncQueue.filter(function(q){return !(q.codigo===code&&q.blocked);});
   var id=record.requestId||(crypto.randomUUID?crypto.randomUUID():Date.now()+"-"+Math.random().toString(36).slice(2));
   record.requestId=id;record.syncStatus="pending";
   var payload={request_id:id,data:record.timestamp,codigo:code,nome:record.name,estoque_real:record.newStock,validade:record.validity||"",tipo:record.manual?"manual":"correcao",recovery:!!recovery};
   if(!syncQueue.some(function(q){return q.request_id===id;})){
     syncQueue.push(payload);
-    try{persistSyncQueue();}catch(e){syncQueue.pop();throw Error("Não foi possível guardar no aparelho. Exporte as correções e libere espaço antes de salvar.");}
+    try{persistSyncQueue();}catch(e){syncQueue=originalQueue;throw Error("Não foi possível guardar no aparelho. Exporte as correções e libere espaço antes de salvar.");}
   }
   inventoryCorrections[code]=record;saveInventoryToStorage();
   syncError="";renderSavedList();syncPending();
@@ -221,12 +224,13 @@ async function syncPending(){
   if(navigator.onLine===false){syncError="Sem conexão. Os registros ficam pendentes neste aparelho.";renderSavedList();return;}
   syncBusy=true;renderSavedList();
   try{
-    while(syncQueue.length){
-      var entry=syncQueue[0];
+    while(syncQueue.some(function(q){return !q.blocked;})){
+      var entry=syncQueue.find(function(q){return !q.blocked;});
       var response=await fetch("/.netlify/functions/save-inventory",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(entry),signal:AbortSignal.timeout(52000)});
       var result=await response.json().catch(function(){return {};});
+      if(response.status===409){entry.blocked=true;entry.error=result.error;persistSyncQueue();syncError=result.error;renderSavedList();continue;}
       if(!response.ok||result.ok!==true||result.request_id!==entry.request_id)throw Error(result.error||"A planilha não confirmou este envio.");
-      var previousQueue=syncQueue.slice();syncQueue.shift();
+      var previousQueue=syncQueue.slice();syncQueue=syncQueue.filter(function(q){return q.request_id!==entry.request_id;});
       try{persistSyncQueue();}catch(e){syncQueue=previousQueue;throw Error("Recebido pela planilha, mas não foi possível atualizar a fila local.");}
       var record=inventoryCorrections[entry.codigo];
       if(record&&record.requestId===entry.request_id){
@@ -738,8 +742,10 @@ function renderSavedList(){
     var code=entry[0],data=entry[1],pending=syncQueue.some(function(q){return q.codigo===code;});
     var item=document.createElement("div");item.className="inv-saved-item";item.style.flexWrap="wrap";
     var name=document.createElement("div");name.className="name";
-    var text=data.syncStatus==="confirmed"?"Confirmado na planilha":pending?"Pendente de envio":"Envio anterior sem confirmação";
+    var conflict=syncQueue.some(function(q){return q.codigo===code&&q.blocked;});
+    var text=conflict?"Confira a quantidade: existe alteração mais recente na planilha":data.syncStatus==="confirmed"?"Confirmado na planilha":pending?"Pendente de envio":"Envio anterior sem confirmação";
     name.textContent=data.name+" — Qtd: "+data.newStock+(data.validity?" | Val: "+data.validity:"")+" — "+text;item.appendChild(name);
+    if(conflict){var review=document.createElement("button");review.className="action-btn";review.textContent="Conferir quantidade";review.onclick=function(){showInvEditor(code,{name:data.name,stock:data.newStock});};item.appendChild(review);}
     if(!pending&&data.syncStatus!=="confirmed"){
       var resend=document.createElement("button");resend.className="action-btn";resend.textContent="Reenviar à planilha";resend.onclick=function(){resendSavedCorrection(code);};item.appendChild(resend);
     }
