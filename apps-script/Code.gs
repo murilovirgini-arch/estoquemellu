@@ -9,8 +9,8 @@ function melluInput(ss){
    var rows=sheet.getDataRange().getValues();
    var backupName="Página1 - anterior 20-10";
    var suffix=1;while(ss.getSheetByName(backupName))backupName="Página1 - anterior 20-10 ("+(suffix++)+")";
-   sheet.setName(backupName);
-   sheet=ss.insertSheet("Página1");
+   sheet.copyTo(ss).setName(backupName);
+   sheet.clearContents();
    sheet.getRange(1,1,1,5).setValues([headers]);
    var migrated=rows.slice(1).filter(function(r){return r[1]||r[2];}).map(function(r){
     var qty=r[3]!==""&&r[3]!=null?r[3]:r[8]!==""&&r[8]!=null?r[8]:r[6];
