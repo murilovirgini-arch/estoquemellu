@@ -195,11 +195,68 @@ var lastScannedInv="";
 var cooldownMain=false;
 var cooldownInv=false;
 var inventoryCorrections={};
+
+var syncQueue=[],syncBusy=false,syncTimer=null,syncError="",syncRetry=0;
+function restoreSyncQueue(){
+  try{syncQueue=JSON.parse(localStorage.getItem("mellu_sync_queue_v1")||"[]");if(!Array.isArray(syncQueue))throw Error("Fila inválida");}
+  catch(e){syncError="Não foi possível ler os envios pendentes. Exporte as correções antes de continuar.";syncQueue=[];}
+  renderSavedList();
+}
+function persistSyncQueue(){localStorage.setItem("mellu_sync_queue_v1",JSON.stringify(syncQueue));}
+function queueCorrection(code,record,recovery){
+  var id=record.requestId||(crypto.randomUUID?crypto.randomUUID():Date.now()+"-"+Math.random().toString(36).slice(2));
+  record.requestId=id;record.syncStatus="pending";
+  var payload={request_id:id,data:record.timestamp,codigo:code,nome:record.name,estoque_real:record.newStock,validade:record.validity||"",tipo:record.manual?"manual":"correcao",recovery:!!recovery};
+  if(!syncQueue.some(function(q){return q.request_id===id;})){
+    syncQueue.push(payload);
+    try{persistSyncQueue();}catch(e){syncQueue.pop();throw Error("Não foi possível guardar no aparelho. Exporte as correções e libere espaço antes de salvar.");}
+  }
+  inventoryCorrections[code]=record;saveInventoryToStorage();
+  syncError="";renderSavedList();syncPending();
+}
+async function syncPending(){
+  if(syncBusy)return;
+  clearTimeout(syncTimer);
+  if(!syncQueue.length){renderSavedList();return;}
+  if(navigator.onLine===false){syncError="Sem conexão. Os registros ficam pendentes neste aparelho.";renderSavedList();return;}
+  syncBusy=true;renderSavedList();
+  try{
+    while(syncQueue.length){
+      var entry=syncQueue[0];
+      var response=await fetch("/.netlify/functions/save-inventory",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(entry),signal:AbortSignal.timeout(52000)});
+      var result=await response.json().catch(function(){return {};});
+      if(!response.ok||result.ok!==true||result.request_id!==entry.request_id)throw Error(result.error||"A planilha não confirmou este envio.");
+      var previousQueue=syncQueue.slice();syncQueue.shift();
+      try{persistSyncQueue();}catch(e){syncQueue=previousQueue;throw Error("Recebido pela planilha, mas não foi possível atualizar a fila local.");}
+      var record=inventoryCorrections[entry.codigo];
+      if(record&&record.requestId===entry.request_id){
+        record.syncStatus="confirmed";record.confirmedAt=new Date().toISOString();
+        saveInventoryToStorage();
+      }
+      syncError="";syncRetry=0;renderSavedList();
+      showToast("Confirmado na planilha: "+entry.nome.substring(0,35),"success");
+    }
+  }catch(e){
+    syncError=e.message||"Falha de conexão. Envio continua pendente.";
+    syncRetry++;
+    syncTimer=setTimeout(syncPending,Math.min(300000,10000*Math.pow(2,Math.min(syncRetry,5))));
+  }finally{syncBusy=false;renderSavedList();}
+}
+function resendSavedCorrection(code){
+  var record=inventoryCorrections[code];if(!record)return;
+  if(syncQueue.some(function(q){return q.codigo===code;})){syncPending();return;}
+  if(!confirm("Reenviar a quantidade "+record.newStock+" de "+record.name+"? Confira se esta ainda é a contagem correta."))return;
+  try{queueCorrection(code,Object.assign({},record),true);}
+  catch(e){showToast(e.message,"error");}
+}
+window.addEventListener("online",syncPending);
+
 var manualPhotos=[];
 
 async function init(){
   await loadDatabase();
   loadInventoryFromStorage();
+  restoreSyncQueue();syncPending();
   document.getElementById("scannerStatus").textContent="Base pronta ("+Object.keys(productsDB).length+" itens) - toque em Ativar Camera";
 }
 
@@ -644,61 +701,60 @@ async function saveManualProduct(){
   if(![8,12,13,14].includes(code.length)){showToast("Confira o código de barras: use 8, 12, 13 ou 14 dígitos.","error");return;}
   if(!rawStock.trim()||!Number.isInteger(stock)||stock<0){showToast("Preencha uma quantidade inteira, igual ou maior que zero.","error");return;}
   var btn=form.querySelector("#saveManualButton");if(btn.disabled)return;btn.disabled=true;
-  inventoryCorrections[code]={name:name,newStock:stock,validity:validity,oldStock:0,timestamp:new Date().toISOString(),manual:true};
-  saveInventoryToStorage();
   try{
-    if(!GOOGLE_SCRIPT_URL)throw new Error("Integração com a planilha não configurada.");
-    await fetch(GOOGLE_SCRIPT_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({data:new Date().toISOString(),codigo:code,nome:name,estoque_real:stock,validade:validity,tipo:"manual"})});
+    queueCorrection(code,{name:name,newStock:stock,validity:validity,oldStock:0,timestamp:new Date().toISOString(),manual:true});
     productsDB[code]={name:name,stock:stock};
-    showToast("Produto salvo no aparelho e enviado à planilha. Confira o recebimento.","success");
+    showToast("Guardado no aparelho. Aguardando confirmação da planilha.");
     form.innerHTML="";manualPhotos=[];
-  }catch(e){showToast("Salvo no aparelho. Não foi possível enviar à planilha; tente novamente.","error");btn.disabled=false;}
+  }catch(e){showToast(e.message,"error");btn.disabled=false;}
 }
 
 async function saveInvCorrection(code,name,oldStock){
-  var newStockInput=document.getElementById("invNewStock");
-  var newStock=parseInt(newStockInput.value);
+  var input=document.getElementById("invNewStock");
+  var value=input.value,quantity=Number(value);
   var validity=document.getElementById("invValidity").value;
-  if(isNaN(newStock)||newStock<0){showToast("Digite uma quantidade valida","error");return;}
-  inventoryCorrections[code]={name:name,oldStock:oldStock,newStock:newStock,validity:validity,timestamp:new Date().toISOString()};
-saveInventoryToStorage();
-if(GOOGLE_SCRIPT_URL){
-try{
-await fetch(GOOGLE_SCRIPT_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({data:new Date().toISOString(),codigo:code,nome:name,estoque_real:newStock,validade:validity})});
-console.log("Enviado para Google Sheets");
-}catch(e){console.warn("Erro ao enviar para Google Sheets:",e);}
-}
-showToast("Salvo! "+name.substring(0,25)+"... -> "+newStock+" unid.","success");
-document.getElementById("invEditArea").innerHTML="";
-document.getElementById("invSearchInput").value="";
-document.getElementById("invSearchResults").innerHTML="";
-if(navigator.vibrate)navigator.vibrate(50);
+  if(!value.trim()||!Number.isInteger(quantity)||quantity<0){showToast("Digite uma quantidade inteira, igual ou maior que zero.","error");return;}
+  try{
+    queueCorrection(code,{name:name,oldStock:oldStock,newStock:quantity,validity:validity,timestamp:new Date().toISOString()});
+    showToast("Guardado no aparelho. Aguardando confirmação da planilha.");
+    document.getElementById("invEditArea").innerHTML="";
+    document.getElementById("invSearchInput").value="";
+    document.getElementById("invSearchResults").innerHTML="";
+  }catch(e){showToast(e.message,"error");}
 }
 function renderSavedList(){
-var container=document.getElementById("invSavedList");
-var entries=Object.entries(inventoryCorrections);
-if(entries.length===0){container.innerHTML="<div class=\"empty-state\" style=\"margin-top:1rem;\">Nenhuma correcao salva ainda</div>";return;}
-var html="<div style=\"font-size:0.85rem;color:#666;margin-bottom:0.5rem;font-weight:600;\">Correcoes salvas ("+entries.length+"):</div>";
-entries.slice().reverse().forEach(function(entry){
-var code=entry[0];var data=entry[1];
-var valStr=data.validity?" | Val: "+data.validity:"";
-html+="<div class=\"inv-saved-item\"><div class=\"name\">"+data.name.substring(0,40)+(data.name.length>40?"...":"")+"<br><span style=\"font-size:0.75rem;color:#888;\">Qtd: "+data.newStock+valStr+"</span></div><button class=\"del\" onclick=\"deleteInvCorrection('"+code+"')\">&times;</button></div>";
-});
-container.innerHTML=html;
+  var container=document.getElementById("invSavedList");if(!container)return;
+  container.innerHTML="";
+  var status=document.createElement("div");status.id="syncStatus";status.setAttribute("role","status");
+  status.style.cssText="padding:12px;margin:12px 0;border-radius:8px;background:#fff3cd;line-height:1.5";
+  status.textContent=syncQueue.length?(syncBusy?"Enviando à planilha… ":"")+syncQueue.length+" envio(s) pendente(s). "+syncError:"Nenhum envio pendente.";
+  if(syncQueue.length){
+    var retry=document.createElement("button");retry.className="action-btn";retry.textContent="Tentar enviar pendentes";retry.disabled=syncBusy;retry.onclick=syncPending;status.appendChild(retry);
+  }
+  container.appendChild(status);
+  var entries=Object.entries(inventoryCorrections);
+  if(!entries.length){var empty=document.createElement("p");empty.textContent="Nenhuma correção salva neste aparelho.";container.appendChild(empty);return;}
+  entries.slice().reverse().forEach(function(entry){
+    var code=entry[0],data=entry[1],pending=syncQueue.some(function(q){return q.codigo===code;});
+    var item=document.createElement("div");item.className="inv-saved-item";item.style.flexWrap="wrap";
+    var name=document.createElement("div");name.className="name";
+    var text=data.syncStatus==="confirmed"?"Confirmado na planilha":pending?"Pendente de envio":"Envio anterior sem confirmação";
+    name.textContent=data.name+" — Qtd: "+data.newStock+(data.validity?" | Val: "+data.validity:"")+" — "+text;item.appendChild(name);
+    if(!pending&&data.syncStatus!=="confirmed"){
+      var resend=document.createElement("button");resend.className="action-btn";resend.textContent="Reenviar à planilha";resend.onclick=function(){resendSavedCorrection(code);};item.appendChild(resend);
+    }
+    var del=document.createElement("button");del.className="del";del.textContent="×";del.disabled=pending;del.onclick=function(){deleteInvCorrection(code);};item.appendChild(del);container.appendChild(item);
+  });
 }
 function deleteInvCorrection(code){
-delete inventoryCorrections[code];
-saveInventoryToStorage();
-showToast("Correcao removida");
+  if(syncQueue.some(function(q){return q.codigo===code;})){showToast("Há envio pendente deste produto. Aguarde a confirmação.","error");return;}
+  delete inventoryCorrections[code];saveInventoryToStorage();
 }
 function clearInventory(){
-if(Object.keys(inventoryCorrections).length===0){showToast("Nada para limpar");return;}
-if(confirm("Tem certeza que deseja limpar TODAS as correcoes salvas?")){
-inventoryCorrections={};
-saveInventoryToStorage();
-showToast("Todas as correcoes foram limpas");
+  if(syncQueue.length){showToast("Envie os registros pendentes antes de limpar as correções.","error");return;}
+  if(confirm("Limpar as correções guardadas neste aparelho? A planilha será mantida.")){inventoryCorrections={};saveInventoryToStorage();}
 }
-}
+
 function exportInventory(){
 var entries=Object.entries(inventoryCorrections);
 if(entries.length===0){showToast("Nenhuma correcao para exportar","error");return;}
