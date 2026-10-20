@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="manifest.json">
-<title>MelLu - Consulta Estoque</title>
+<title>MelLu - Contagens de Estoque</title>
 <style>
 :root{--primary:#d97757;--bg:#fdf6f0;--text:#3d2c24;--success:#4caf50;--warning:#ff9800;--danger:#f44336;--surface:#fff;--info:#2196f3;--inventory:#7b1fa2}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -153,7 +153,7 @@ button.action-btn:active{opacity:.8}
 <div id="panel-inventory" class="panel">
 <div class="inv-header">
 <h2>&#128203; Recontagem de Inventario</h2>
-<p>Escaneie ou busque, corrija a quantidade e salve</p>
+<p>Cada contagem é separada: escaneie ou busque, informe a quantidade e salve</p>
 </div>
 <div class="inv-counter"><span>Itens corrigidos:</span><strong id="invCount">0</strong></div>
 <div class="scanner-container">
@@ -209,7 +209,7 @@ function queueCorrection(code,record,recovery){
   if(!recovery)syncQueue=syncQueue.filter(function(q){return !(q.codigo===code&&q.blocked);});
   var id=record.requestId||(crypto.randomUUID?crypto.randomUUID():Date.now()+"-"+Math.random().toString(36).slice(2));
   record.requestId=id;record.syncStatus="pending";
-  var payload={request_id:id,data:record.timestamp,codigo:code,nome:record.name,estoque_real:record.newStock,validade:record.validity||"",tipo:record.manual?"manual":"correcao",recovery:!!recovery};
+  var payload={request_id:id,data:record.timestamp,codigo:code,nome:record.name,estoque_real:record.newStock,estoque_sistema:record.oldStock==null?"":record.oldStock,validade:record.validity||"",tipo:record.manual?"manual":"correcao",recovery:!!recovery};
   if(!syncQueue.some(function(q){return q.request_id===id;})){
     syncQueue.push(payload);
     try{persistSyncQueue();}catch(e){syncQueue=originalQueue;throw Error("Não foi possível guardar no aparelho. Exporte as correções e libere espaço antes de salvar.");}
@@ -238,7 +238,7 @@ async function syncPending(){
         saveInventoryToStorage();
       }
       syncError="";syncRetry=0;renderSavedList();
-      showToast("Confirmado na planilha: "+entry.nome.substring(0,35),"success");
+      showToast("Confirmado nas duas abas: "+entry.nome.substring(0,35),"success");
     }
   }catch(e){
     syncError=e.message||"Falha de conexão. Envio continua pendente.";
@@ -248,9 +248,9 @@ async function syncPending(){
 }
 function resendSavedCorrection(code){
   var record=inventoryCorrections[code];if(!record)return;
-  if(syncQueue.some(function(q){return q.codigo===code;})){syncPending();return;}
+  if(record.requestId&&syncQueue.some(function(q){return q.request_id===record.requestId;})){syncPending();return;}
   if(!confirm("Reenviar a quantidade "+record.newStock+" de "+record.name+"? Confira se esta ainda é a contagem correta."))return;
-  try{queueCorrection(code,Object.assign({},record),true);}
+  try{var copy=Object.assign({},record);delete copy.requestId;queueCorrection(code,copy,true);}
   catch(e){showToast(e.message,"error");}
 }
 window.addEventListener("online",syncPending);
@@ -731,7 +731,7 @@ function renderSavedList(){
   container.innerHTML="";
   var status=document.createElement("div");status.id="syncStatus";status.setAttribute("role","status");
   status.style.cssText="padding:12px;margin:12px 0;border-radius:8px;background:#fff3cd;line-height:1.5";
-  status.textContent=syncQueue.length?(syncBusy?"Enviando à planilha… ":"")+syncQueue.length+" envio(s) pendente(s). "+syncError:"Nenhum envio pendente.";
+  status.textContent=syncQueue.length?(syncBusy?"Enviando à planilha… ":"")+syncQueue.length+" envio(s) pendente(s). "+syncError:"Nenhum envio pendente. Cada contagem gera uma nova linha nas duas abas.";
   if(syncQueue.length){
     var retry=document.createElement("button");retry.className="action-btn";retry.textContent="Tentar enviar pendentes";retry.disabled=syncBusy;retry.onclick=syncPending;status.appendChild(retry);
   }
