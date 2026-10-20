@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#d97757">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.json">
+<title>MelLu - Consulta Estoque</title>
+<style>
+:root{--primary:#d97757;--bg:#fdf6f0;--text:#3d2c24;--success:#4caf50;--warning:#ff9800;--danger:#f44336;--surface:#fff;--info:#2196f3;--inventory:#7b1fa2}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column}
+header{background:var(--primary);color:#fff;padding:1rem;text-align:center;font-size:1.2rem;font-weight:600;box-shadow:0 2px 4px rgba(0,0,0,.1)}
+main{flex:1;padding:1rem;max-width:600px;margin:0 auto;width:100%;padding-bottom:2rem}
+.tabs{display:flex;gap:.4rem;margin-bottom:1rem}
+.tab-btn{flex:1;padding:.65rem .4rem;border:none;background:#e0d5cc;border-radius:8px;font-weight:600;font-size:.85rem;color:var(--text);cursor:pointer;transition:all .2s}
+.tab-btn.active{background:var(--primary);color:#fff}
+.tab-btn.inv-active{background:var(--inventory);color:#fff}
+.panel{display:none}.panel.active{display:block;animation:fadeIn .3s}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.scanner-container{background:#000;border-radius:12px;overflow:hidden;margin-bottom:1rem;position:relative;width:100%;aspect-ratio:4/3;min-height:240px}
+#reader,#readerInv{width:100%;height:100%;position:relative;z-index:1}
+#reader video,#readerInv video{object-fit:cover;width:100%;height:100%}
+.camera-placeholder{position:absolute;top:0;left:0;right:0;bottom:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;text-align:center;padding:1rem;background:#1a1a1a;z-index:0}
+.camera-placeholder .icon{font-size:3rem;margin-bottom:.75rem}
+.camera-placeholder p{font-size:.9rem;opacity:.8;margin-bottom:1rem}
+.btn-start-camera{background:var(--primary);color:#fff;border:none;padding:.875rem 2rem;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer;box-shadow:0 4px 12px rgba(217,119,87,.4);-webkit-tap-highlight-color:transparent}
+.btn-start-camera:active{transform:scale(.97)}
+.btn-start-camera.inv{background:var(--inventory);box-shadow:0 4px 12px rgba(123,31,162,.4)}
+.search-box{display:flex;gap:.5rem;margin-bottom:1rem}
+input[type=text],input[type=number],input[type=month]{flex:1;padding:.75rem;border:2px solid #e0d5cc;border-radius:8px;font-size:1rem;outline:none}
+input:focus{border-color:var(--primary)}
+button.action-btn{background:var(--primary);color:#fff;border:none;padding:0 1.25rem;border-radius:8px;font-size:1rem;cursor:pointer;font-weight:600}
+button.action-btn:active{opacity:.8}
+.result-card{background:#fff;border-radius:12px;padding:1.25rem;box-shadow:0 2px 8px rgba(0,0,0,.08);margin-bottom:1rem;animation:slideUp .3s ease}
+@keyframes slideUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.result-card.found{border-left:4px solid var(--success)}
+.result-card.not-found{border-left:4px solid var(--danger)}
+.product-name{font-size:1.05rem;font-weight:600;margin-bottom:.5rem;line-height:1.4}
+.product-meta{font-size:.85rem;color:#666;margin-bottom:1rem;display:flex;justify-content:space-between}
+.stock-display{font-size:2rem;font-weight:700;text-align:center;padding:1rem;border-radius:8px;background:#f8f4f0}
+.stock-high{color:var(--success)}.stock-low{color:var(--warning)}.stock-out{color:var(--danger)}
+.status-bar{text-align:center;padding:.5rem;font-size:.85rem;color:#888;margin-top:.5rem}
+.list-item{background:#fff;padding:1rem;border-radius:8px;margin-bottom:.5rem;border-left:3px solid var(--primary);cursor:pointer}
+.list-item:active{background:#f0f0f0}
+.empty-state{text-align:center;color:#888;margin-top:2rem}
+.scan-overlay{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:80%;max-width:320px;height:100px;border:2px solid rgba(255,255,255,.5);border-radius:8px;pointer-events:none;box-shadow:0 0 0 9999px rgba(0,0,0,.4);overflow:hidden;display:none;z-index:5}
+.scan-overlay.active{display:block}
+.scan-overlay::before{content:'';position:absolute;left:0;right:0;height:3px;background:linear-gradient(90deg,transparent,#ff3b30,#ff3b30,transparent);box-shadow:0 0 8px #ff3b30,0 0 16px rgba(255,59,48,.5);animation:scanLaser 1.8s ease-in-out infinite}
+.scan-overlay::after{content:'Centralize o codigo aqui';position:absolute;bottom:-28px;left:50%;transform:translateX(-50%);color:#fff;font-size:.75rem;white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,.8)}
+@keyframes scanLaser{0%{top:0;opacity:0}10%{opacity:1}50%{top:calc(100% - 3px);opacity:1}90%{opacity:1}100%{top:0;opacity:0}}
+.scan-corners{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:80%;max-width:320px;height:100px;pointer-events:none;display:none}
+.scan-corners.active{display:block}
+.scan-corners span{position:absolute;width:20px;height:20px;border-color:var(--primary);border-style:solid}
+.scan-corners span:nth-child(1){top:-2px;left:-2px;border-width:3px 0 0 3px;border-radius:4px 0 0 0}
+.scan-corners span:nth-child(2){top:-2px;right:-2px;border-width:3px 3px 0 0;border-radius:0 4px 0 0}
+.scan-corners span:nth-child(3){bottom:-2px;left:-2px;border-width:0 0 3px 3px;border-radius:0 0 0 4px}
+.scan-corners span:nth-child(4){bottom:-2px;right:-2px;border-width:0 3px 3px 0;border-radius:0 0 4px 0}
+.benefits-card{background:linear-gradient(135deg,#e3f2fd 0%,#bbdefb 100%);border-left:4px solid var(--info);border-radius:12px;padding:1.25rem;margin-top:1rem}
+.benefits-title{font-size:.9rem;font-weight:700;color:var(--info);margin-bottom:.75rem}
+.benefits-content{font-size:.9rem;line-height:1.6;color:#1565c0}
+.btn-benefits{background:var(--info);color:#fff;border:none;padding:.6rem 1rem;border-radius:8px;font-size:.9rem;cursor:pointer;font-weight:600;margin-top:.75rem;width:100%}
+.btn-benefits:active{opacity:.8}
+.inv-header{background:linear-gradient(135deg,#7b1fa2,#9c27b0);color:#fff;padding:1rem;border-radius:12px;margin-bottom:1rem;text-align:center}
+.inv-header h2{font-size:1.1rem;margin-bottom:.25rem}
+.inv-header p{font-size:.8rem;opacity:.9}
+.inv-counter{background:#fff;border-radius:8px;padding:.75rem 1rem;margin-bottom:1rem;display:flex;justify-content:space-between;align-items:center;border-left:4px solid var(--inventory)}
+.inv-counter strong{color:var(--inventory);font-size:1.2rem}
+.inv-edit-card{background:#fff;border-radius:12px;padding:1.25rem;margin-bottom:1rem;border-left:4px solid var(--inventory);box-shadow:0 2px 8px rgba(0,0,0,.08)}
+.inv-edit-card .product-name{color:var(--inventory)}
+.inv-stock-row{display:flex;gap:1rem;align-items:center;margin:1rem 0}
+.inv-stock-box{flex:1;text-align:center;padding:.75rem;border-radius:8px;background:#f5f5f5}
+.inv-stock-box label{display:block;font-size:.75rem;color:#888;text-transform:uppercase;margin-bottom:.25rem}
+.inv-stock-box .value{font-size:1.5rem;font-weight:700}
+.inv-stock-box input{width:100%;text-align:center;font-size:1.5rem;font-weight:700;border:2px solid var(--inventory);border-radius:8px;padding:.5rem;color:var(--inventory)}
+.inv-validity-row{margin:.75rem 0}
+.inv-validity-row label{display:block;font-size:.75rem;color:#888;text-transform:uppercase;margin-bottom:.25rem}
+.inv-validity-row input{width:100%;padding:.6rem;border:2px solid var(--inventory);border-radius:8px;font-size:1rem;color:var(--inventory)}
+.btn-save-inv{background:var(--inventory);color:#fff;border:none;padding:.875rem;border-radius:8px;font-size:1rem;font-weight:600;width:100%;cursor:pointer;margin-top:.5rem}
+.btn-save-inv:active{opacity:.8}
+.btn-export{background:var(--success);color:#fff;border:none;padding:.875rem;border-radius:8px;font-size:1rem;font-weight:600;width:100%;cursor:pointer;margin-top:.5rem}
+.btn-clear-inv{background:transparent;color:var(--danger);border:2px solid var(--danger);padding:.75rem;border-radius:8px;font-size:.9rem;font-weight:600;width:100%;cursor:pointer;margin-top:.5rem}
+.inv-saved-item{background:#fff;padding:.75rem 1rem;border-radius:8px;margin-bottom:.5rem;border-left:3px solid var(--inventory);display:flex;justify-content:space-between;align-items:center}
+.inv-saved-item .name{font-size:.85rem;font-weight:600;flex:1}
+.inv-saved-item .del{background:none;border:none;color:var(--danger);font-size:1.2rem;cursor:pointer;padding:0 .5rem}
+.manual-add-card{background:#fff;border-radius:12px;padding:1.25rem;margin-bottom:1rem;border-left:4px solid var(--warning);box-shadow:0 2px 8px rgba(0,0,0,.08)}
+.manual-add-card h3{font-size:1rem;color:var(--warning);margin-bottom:.75rem}
+.photo-upload-area{border:2px dashed #ccc;border-radius:8px;padding:1.5rem;text-align:center;margin-bottom:1rem;cursor:pointer}
+.photo-upload-area .icon{font-size:2rem;margin-bottom:.5rem}
+.photo-upload-area p{font-size:.85rem;color:#666}
+.photo-preview-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:.5rem;margin-bottom:1rem}
+.photo-preview-item{position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;background:#f0f0f0}
+.photo-preview-item img{width:100%;height:100%;object-fit:cover}
+.photo-preview-item .remove-photo{position:absolute;top:2px;right:2px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:.7rem;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.ocr-status{padding:.75rem;border-radius:8px;margin-bottom:1rem;font-size:.85rem;text-align:center}
+.ocr-status.processing{background:#fff3e0;color:#e65100}
+.ocr-status.success{background:#e8f5e9;color:#2e7d32}
+.ocr-status.error{background:#ffebee;color:#c62828}
+.manual-form-field{margin-bottom:.75rem}
+.manual-form-field label{display:block;font-size:.75rem;color:#888;text-transform:uppercase;margin-bottom:.25rem}
+.manual-form-field input,.manual-form-field textarea{width:100%;padding:.6rem;border:2px solid #e0d5cc;border-radius:8px;font-size:1rem;outline:none}
+.manual-form-field input:focus,.manual-form-field textarea:focus{border-color:var(--warning)}
+.btn-analyze-photos{background:var(--warning);color:#fff;border:none;padding:.75rem;border-radius:8px;font-size:.95rem;font-weight:600;width:100%;cursor:pointer;margin-bottom:1rem}
+.btn-analyze-photos:active{opacity:.8}
+.btn-analyze-photos:disabled{background:#ccc;cursor:not-allowed}
+.toast{position:fixed;bottom:2rem;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:.75rem 1.5rem;border-radius:8px;font-size:.9rem;z-index:10000;animation:toastIn .3s ease;max-width:90%;text-align:center}
+.toast.success{background:var(--success)}.toast.error{background:var(--danger)}
+@keyframes toastIn{from{opacity:0;transform:translate(-50%,20px)}to{opacity:1;transform:translate(-50%,0)}}
+.btn-stop-camera{background:var(--danger);color:#fff;border:none;padding:.6rem 1rem;border-radius:8px;font-size:.85rem;font-weight:600;cursor:pointer;margin-top:.5rem;width:100%;display:none}
+.btn-stop-camera.visible{display:block}
+</style>
+</head>
+<body>
+<header>MelLu Estoque</header>
+<main>
+<div class="tabs">
+<button class="tab-btn active" id="tabScanner" onclick="switchTab('scanner')">Camera</button>
+<button class="tab-btn" id="tabSearch" onclick="switchTab('search')">Nome</button>
+<button class="tab-btn" id="tabInventory" onclick="switchTab('inventory')">Inventario</button>
+</div>
+
+<div id="panel-scanner" class="panel active">
+<div class="scanner-container">
+<div id="reader"></div>
+<div id="placeholderMain" class="camera-placeholder">
+<div class="icon">&#128247;</div>
+<p>Toque no botao abaixo para ativar a camera e ler codigos de barras</p>
+<button class="btn-start-camera" onclick="startCameraMain()">Ativar Camera</button>
+</div>
+<div class="scan-overlay" id="overlayMain"></div>
+<div class="scan-corners" id="cornersMain"><span></span><span></span><span></span><span></span></div>
+</div>
+<button class="btn-stop-camera" id="stopBtnMain" onclick="stopCameraMain()">&#9209; Parar Camera</button>
+<div class="search-box">
+<input type="text" id="manualBarcode" placeholder="Ou digite o codigo..." inputmode="numeric">
+<button class="action-btn" onclick="handleManualBarcode()">OK</button>
+</div>
+<div class="status-bar" id="scannerStatus">Base carregando...</div>
+<div id="scannerResult"></div>
+</div>
+
+<div id="panel-search" class="panel">
+<div class="search-box">
+<input type="text" id="searchInput" placeholder="Digite o nome do produto..." onkeyup="handleSearch(event)">
+<button class="action-btn" onclick="performSearch()">Buscar</button>
+</div>
+<div id="searchResults"><div class="empty-state">Digite para buscar nos produtos</div></div>
+</div>
+
+<div id="panel-inventory" class="panel">
+<div class="inv-header">
+<h2>&#128203; Recontagem de Inventario</h2>
+<p>Escaneie ou busque, corrija a quantidade e salve</p>
+</div>
+<div class="inv-counter"><span>Itens corrigidos:</span><strong id="invCount">0</strong></div>
+<div class="scanner-container">
+<div id="readerInv"></div>
+<div id="placeholderInv" class="camera-placeholder">
+<div class="icon">&#128247;</div>
+<p>Toque para ativar a camera do inventario</p>
+<button class="btn-start-camera inv" onclick="startCameraInv()">Ativar Camera</button>
+</div>
+<div class="scan-overlay" id="overlayInv"></div>
+<div class="scan-corners" id="cornersInv"><span></span><span></span><span></span><span></span></div>
+</div>
+<button class="btn-stop-camera" id="stopBtnInv" onclick="stopCameraInv()">&#9209; Parar Camera</button>
+<div class="search-box">
+<input type="text" id="invSearchInput" placeholder="Codigo ou nome do produto..." onkeyup="handleInvSearch(event)">
+<button class="action-btn" style="background:var(--inventory);" onclick="performInvSearch()">Buscar</button>
+</div>
+<div id="invSearchResults"></div>
+<div id="invEditArea"></div>
+<div id="invManualArea"></div>
+<div id="invSavedList" style="margin-top:1rem;"></div>
+<div style="margin-top:1rem;">
+<button class="btn-export" onclick="exportInventory()">&#128229; Exportar Correcoes (JSON)</button>
+<button class="btn-clear-inv" onclick="clearInventory()">&#128465;&#65039; Limpar Todas as Correcoes</button>
+</div>
+</div>
+</main>
+
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script>
+var GOOGLE_SCRIPT_URL="https://script.google.com/macros/s/AKfycbyrXSDBiPYgHSfX7xSQBnOlVH2ChQNSvEieKJXE_Dzp_A87YThmrgax8852Q8HDE_3Z/exec";
+var productsDB={};
+var html5QrCodeMain=null;
+var html5QrCodeInv=null;
+var isScanningMain=false;
+var isScanningInv=false;
+var lastScannedMain="";
+var lastScannedInv="";
+var cooldownMain=false;
+var cooldownInv=false;
+var inventoryCorrections={};
+var manualPhotos=[];
+
+async function init(){
+  await loadDatabase();
+  loadInventoryFromStorage();
+  document.getElementById("scannerStatus").textContent="Base pronta ("+Object.keys(productsDB).length+" itens) - toque em Ativar Camera";
+}
+
+async function loadDatabase(){
+  try{
+    var resp=await fetch("data/products.json");
+    productsDB=await resp.json();
+  }catch(e){
+    console.error("Erro ao carregar DB",e);
+    document.getElementById("scannerStatus").textContent="Erro ao carregar base de dados";
+  }
+}
+
+function loadInventoryFromStorage(){
+  try{
+    var saved=localStorage.getItem("mellu_inventory_corrections");
+    if(saved){inventoryCorrections=JSON.parse(saved);updateInvCounter();renderSavedList();}
+  }catch(e){console.warn("Erro ao carregar inventario local:",e);}
+}
+
+function saveInventoryToStorage(){
+  try{localStorage.setItem("mellu_inventory_corrections",JSON.stringify(inventoryCorrections));}catch(e){}
+  updateInvCounter();renderSavedList();
+}
+
+function updateInvCounter(){document.getElementById("invCount").textContent=Object.keys(inventoryCorrections).length;}
+
+function switchTab(tabName){
+  document.querySelectorAll(".tab-btn").forEach(function(b){b.classList.remove("active");b.classList.remove("inv-active");});
+  document.querySelectorAll(".panel").forEach(function(p){p.classList.remove("active");});
+  if(tabName==="scanner"){
+    document.getElementById("tabScanner").classList.add("active");
+    document.getElementById("panel-scanner").classList.add("active");
+    stopCameraInv();
+  }else if(tabName==="search"){
+    document.getElementById("tabSearch").classList.add("active");
+    document.getElementById("panel-search").classList.add("active");
+    stopCameraMain();stopCameraInv();
+    setTimeout(function(){document.getElementById("searchInput").focus();},100);
+  }else if(tabName==="inventory"){
+    document.getElementById("tabInventory").classList.add("inv-active");
+    document.getElementById("panel-inventory").classList.add("active");
+    stopCameraMain();
+    setTimeout(function(){document.getElementById("invSearchInput").focus();},100);
+  }
+}
+
+async function startCameraMain(){
+  if(isScanningMain)return;
+  var placeholder=document.getElementById("placeholderMain");
+  var overlay=document.getElementById("overlayMain");
+  var corners=document.getElementById("cornersMain");
+  var stopBtn=document.getElementById("stopBtnMain");
+  var status=document.getElementById("scannerStatus");
+  try{
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){throw new Error("Navegador nao suporta camera.");}
+    if(html5QrCodeMain){try{await html5QrCodeMain.stop();}catch(e){}try{html5QrCodeMain.clear();}catch(e){}html5QrCodeMain=null;}
+    await new Promise(function(r){setTimeout(r,100);});
+    html5QrCodeMain=new Html5Qrcode("reader");
+    var config={fps:10,qrbox:function(vw,vh){var m=Math.min(vw,vh);return{width:Math.floor(m*0.85),height:Math.floor(m*0.35)};},disableFlip:false};
+    status.textContent="Solicitando permissao da camera...";
+    await html5QrCodeMain.start({facingMode:"environment"},config,function(d){onScanMain(d);},function(e){});
+    isScanningMain=true;
+    overlay.classList.add("active");corners.classList.add("active");stopBtn.classList.add("visible");
+    status.textContent="Camera ativa - mantenha 20-30cm de distancia";
+    var waitVideoMain=setInterval(function(){
+      var vid=document.querySelector("#reader video");
+      if(vid){clearInterval(waitVideoMain);if(placeholder)placeholder.remove();}
+    },200);
+    setTimeout(function(){clearInterval(waitVideoMain);if(placeholder)placeholder.remove();},5000);
+    setTimeout(function(){applyFocusContinuous("reader");},2000);
+  }catch(err){
+    console.error("Erro camera principal:",err);
+    placeholder.style.display="flex";overlay.classList.remove("active");corners.classList.remove("active");stopBtn.classList.remove("visible");
+    var msg=err.message||"Erro desconhecido";
+    if(msg.indexOf("Permission")>=0||msg.indexOf("NotAllowed")>=0||msg.indexOf("denied")>=0){msg="Permissao negada. No iPhone: Ajustes > Safari > Camera > Permitir";}
+    else if(msg.indexOf("NotFound")>=0){msg="Camera nao encontrada.";}
+    status.innerHTML="<div style=\"color:var(--danger);padding:0.75rem;background:#ffebee;border-radius:8px;margin-top:0.5rem;\"><strong>"+msg+"</strong><br><button class=\"action-btn\" onclick=\"startCameraMain()\" style=\"margin-top:0.75rem;width:100%;\">Tentar Novamente</button></div>";
+    isScanningMain=false;
+  }
+}
+
+async function stopCameraMain(){
+  if(!isScanningMain)return;
+  try{await html5QrCodeMain.stop();html5QrCodeMain.clear();}catch(e){}
+  isScanningMain=false;
+  var container=document.querySelector("#panel-scanner .scanner-container");
+  if(container&&!document.getElementById("placeholderMain")){
+    var np=document.createElement("div");np.id="placeholderMain";np.className="camera-placeholder";
+    np.innerHTML='<div class="icon">&#128247;</div><p>Toque no botao abaixo para ativar a camera e ler codigos de barras</p><button class="btn-start-camera" onclick="startCameraMain()">Ativar Camera</button>';
+    container.appendChild(np);
+  }
+  document.getElementById("overlayMain").classList.remove("active");
+  document.getElementById("cornersMain").classList.remove("active");
+  document.getElementById("stopBtnMain").classList.remove("visible");
+}
+
+function onScanMain(decodedText){
+  if(cooldownMain||decodedText===lastScannedMain)return;
+  lastScannedMain=decodedText;cooldownMain=true;
+  if(navigator.vibrate)navigator.vibrate(100);
+  processLookupMain(decodedText);
+  setTimeout(function(){cooldownMain=false;lastScannedMain="";},2000);
+}
+
+function handleManualBarcode(){
+  var code=document.getElementById("manualBarcode").value.trim();
+  if(code){processLookupMain(code);document.getElementById("manualBarcode").value="";}
+}
+
+function processLookupMain(code){
+  var container=document.getElementById("scannerResult");
+  var product=productsDB[code];
+  if(product){renderProductCardMain(container,product,code);}
+  else{container.innerHTML="<div class=\"result-card not-found\"><div class=\"product-name\">Codigo nao encontrado na base</div><div class=\"product-meta\">Codigo lido: "+code+"</div><p style=\"font-size:0.9rem;color:#666;margin-top:10px;\">Tente buscar pelo <strong>NOME</strong> na aba ao lado.</p><button class=\"action-btn\" style=\"width:100%;margin-top:10px;\" onclick=\"switchTab('search')\">Ir para Busca por Nome</button></div>";}
+}
+
+function renderProductCardMain(container,product,code){
+  var stock=parseInt(product.stock)||0;
+  var stockClass="stock-high";var stockText=stock+" unidades";
+  if(stock===0){stockClass="stock-out";stockText="SEM ESTOQUE";}
+  else if(stock<=5){stockClass="stock-low";stockText=stock+" unidades (Baixo)";}
+  var safeName=product.name.replace(/'/g,"\\'");
+  var priceStr=product.price?"R$ "+product.price.toFixed(2):"";
+  var h="<div class=\"result-card found\">";
+  h+="<div class=\"product-name\">"+product.name+"</div>";
+  h+="<div class=\"product-meta\"><span>Cod: "+code+"</span><span>"+priceStr+"</span></div>";
+  h+="<div class=\"stock-display "+stockClass+"\">"+stockText+"</div>";
+  h+="<button class=\"btn-benefits\" onclick=\"fetchProductBenefits('"+safeName+"')\">Ver Beneficios</button>";
+  h+="<div id=\"benefitsContainer\"></div></div>";
+  container.innerHTML=h;
+}
+
+async function startCameraInv(){
+  if(isScanningInv)return;
+  var container=document.querySelector("#panel-inventory .scanner-container");
+  var overlay=document.getElementById("overlayInv");
+  var corners=document.getElementById("cornersInv");
+  var stopBtn=document.getElementById("stopBtnInv");
+  var ph=document.getElementById("placeholderInv");
+  var readerEl=document.getElementById("readerInv");
+  var debugEl=document.getElementById("invDebug");
+  if(!debugEl){debugEl=document.createElement("div");debugEl.id="invDebug";debugEl.style.cssText="font-size:11px;color:#ff9800;padding:4px;text-align:center;word-break:break-all;";container.parentNode.insertBefore(debugEl,container.nextSibling);}
+  function log(msg){debugEl.textContent="[CAM] "+msg;console.log("[CAM-INV]",msg);}
+  try{
+    log("Iniciando...");
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){throw new Error("Navegador nao suporta camera.");}
+    if(html5QrCodeInv){try{await html5QrCodeInv.stop();}catch(e){}try{html5QrCodeInv.clear();}catch(e){}html5QrCodeInv=null;}
+    readerEl.style.width="100%";readerEl.style.height="100%";readerEl.style.minHeight="240px";
+    void readerEl.offsetWidth;
+    log("Aguardando dimensoes...");
+    await new Promise(function(r){setTimeout(r,300);});
+    html5QrCodeInv=new Html5Qrcode("readerInv");
+    var config={fps:10,qrbox:function(vw,vh){var m=Math.min(vw,vh);return{width:Math.floor(m*0.85),height:Math.floor(m*0.35)};},disableFlip:false};
+    log("Chamando start()...");
+    var startPromise=html5QrCodeInv.start({facingMode:"environment"},config,function(d){onScanInv(d);},function(e){});
+    var timeoutPromise=new Promise(function(_,rej){setTimeout(function(){rej(new Error("Timeout: camera nao respondeu em 8s"));},8000);});
+    await Promise.race([startPromise,timeoutPromise]);
+    log("start() resolveu OK");
+    isScanningInv=true;
+    overlay.classList.add("active");corners.classList.add("active");stopBtn.classList.add("visible");
+    var waitVideo=setInterval(function(){
+      var vid=readerEl.querySelector("video");
+      if(vid){clearInterval(waitVideo);if(ph)ph.remove();log("Video detectado, placeholder removido");}
+    },200);
+    setTimeout(function(){clearInterval(waitVideo);if(ph){ph.remove();log("Timeout video - placeholder removido a forca");}},5000);
+    setTimeout(function(){applyFocusContinuous("readerInv");},2000);
+    setTimeout(function(){if(debugEl.textContent.indexOf("OK")>=0)debugEl.textContent="";},3000);
+  }catch(err){
+    log("ERRO: "+(err.message||err));
+    console.error("Erro camera inventario:",err);
+    if(ph)ph.style.display="flex";
+    if(!document.getElementById("placeholderInv")&&container){
+      var np=document.createElement("div");np.id="placeholderInv";np.className="camera-placeholder";
+      np.innerHTML='<div class="icon">&#128247;</div><p>Toque para ativar a camera do inventario</p><button class="btn-start-camera inv" onclick="startCameraInv()">Ativar Camera</button>';
+      container.appendChild(np);
+    }
+    overlay.classList.remove("active");corners.classList.remove("active");stopBtn.classList.remove("visible");
+    var msg=err.message||"Erro desconhecido";
+    if(msg.indexOf("Permission")>=0||msg.indexOf("NotAllowed")>=0||msg.indexOf("denied")>=0){msg="Permissao negada. No iPhone: Ajustes > Safari > Camera > Permitir";}
+    else if(msg.indexOf("Timeout")>=0){msg="Camera demorou demais. Recarregue a pagina e tente novamente.";}
+    showToast(msg,"error");isScanningInv=false;
+  }
+}
+
+async function stopCameraInv(){
+  if(!isScanningInv)return;
+  try{await html5QrCodeInv.stop();html5QrCodeInv.clear();}catch(e){}
+  isScanningInv=false;
+  var container=document.querySelector("#panel-inventory .scanner-container");
+  if(container&&!document.getElementById("placeholderInv")){
+    var np=document.createElement("div");np.id="placeholderInv";np.className="camera-placeholder";
+    np.innerHTML='<div class="icon">&#128247;</div><p>Toque para ativar a camera do inventario</p><button class="btn-start-camera inv" onclick="startCameraInv()">Ativar Camera</button>';
+    container.appendChild(np);
+  }
+  document.getElementById("overlayInv").classList.remove("active");
+  document.getElementById("cornersInv").classList.remove("active");
+  document.getElementById("stopBtnInv").classList.remove("visible");
+}
+
+function onScanInv(decodedText){
+  if(cooldownInv||decodedText===lastScannedInv)return;
+  lastScannedInv=decodedText;cooldownInv=true;
+  if(navigator.vibrate)navigator.vibrate(100);
+  var product=productsDB[decodedText];
+  if(product){showInvEditor(decodedText,product);document.getElementById("invSearchInput").value=decodedText;}
+  else{showManualAddOption(decodedText);}
+  setTimeout(function(){cooldownInv=false;lastScannedInv="";},2000);
+}
+
+function applyFocusContinuous(readerId){
+  try{
+    var readerEl=document.getElementById(readerId);if(!readerEl)return;
+    var video=readerEl.querySelector("video");if(!video||!video.srcObject)return;
+    var track=video.srcObject.getVideoTracks()[0];if(!track)return;
+    var cap=track.getCapabilities?track.getCapabilities():{};
+    if(cap.focusMode&&cap.focusMode.indexOf("continuous")>=0){track.applyConstraints({advanced:[{focusMode:"continuous"}]}).catch(function(){});}
+  }catch(e){console.warn("Foco continuo nao disponivel:",e);}
+}
+
+function fetchProductBenefits(name){
+  var container=document.getElementById("benefitsContainer");if(!container)return;
+  var benefits=generateBenefits(name);
+  container.innerHTML="<div class=\"benefits-card\"><div class=\"benefits-title\">Argumentos de Venda</div><div class=\"benefits-content\">"+benefits.replace(/\n/g,"<br>")+"</div></div>";
+}
+
+function generateBenefits(name){
+  var n=name.toLowerCase();
+  if(n.indexOf("shampoo")>=0||n.indexOf("condicionador")>=0)return "Para cabelos:\n- Formula suave para uso diario\n- Nutricao sem pesar nos fios\n- Brilho e maciez imediatos\n- Ideal para manutencao capilar";
+  if(n.indexOf("creme")>=0||n.indexOf("hidrat")>=0)return "Hidratacao profunda:\n- Restaura a umidade natural\n- Textura leve e absorcao rapida\n- Pode ser usado diariamente\n- Resultado visivel desde a primeira aplicacao";
+  if(n.indexOf("serum")>=0)return "Tratamento concentrado:\n- Alta concentracao de ativos\n- Resultados visiveis\n- Melhor forma de aplicacao\n- Uso noturno para melhor absorcao";
+  if(n.indexOf("mascara")>=0||n.indexOf("tratamento")>=0)return "Tratamento intensivo:\n- Tempo de acao recomendado\n- Frequencia de uso ideal\n- Resultados apos o uso\n- Para qual necessidade capilar";
+  if(n.indexOf("oleo")>=0||n.indexOf("corporal")>=0)return "Oleo corporal:\n- Nutricao profunda\n- Aroma e sensacao\n- Melhor momento de aplicacao\n- Uso pos-banho com pele umida";
+  if(n.indexOf("maquiagem")>=0||n.indexOf("base")>=0||n.indexOf("batom")>=0)return "Maquiagem:\n- Durabilidade e fixacao\n- Cobertura e acabamento\n- Para qual ocasiao\n- Combinacoes com outros produtos";
+  return "Dicas gerais de venda:\n- Destaque diferenciais do produto\n- Mencione beneficios principais\n- Indique para quem e adequado\n- Sugira uso combinado com outros itens";
+}
+
+function handleSearch(e){if(e.key==="Enter")performSearch();}
+
+function performSearch(){
+  var term=document.getElementById("searchInput").value.toLowerCase().trim();
+  var container=document.getElementById("searchResults");
+  if(term.length<2){container.innerHTML="<div class=\"empty-state\">Digite pelo menos 2 letras</div>";return;}
+  var results=[];
+  for(var code in productsDB){if(productsDB[code].name.toLowerCase().indexOf(term)>=0){results.push({code:code,name:productsDB[code].name,stock:productsDB[code].stock,price:productsDB[code].price});}if(results.length>=20)break;}
+  if(results.length===0){container.innerHTML="<div class=\"empty-state\">Nenhum produto encontrado</div>";return;}
+  var html="<div style=\"margin-bottom:0.5rem;font-size:0.8rem;color:#666;\">"+results.length+" resultados</div>";
+  results.forEach(function(p){
+    var stockColor=p.stock>0?(p.stock<=5?"var(--warning)":"var(--success)"):"var(--danger)";
+    var safeName=p.name.replace(/'/g,"\\'");
+    html+="<div class=\"list-item\" onclick=\"showProductDetails('"+p.code+"','"+safeName+"',"+p.stock+")\"><div style=\"font-weight:600;font-size:0.95rem;\">"+p.name+"</div><div style=\"display:flex;justify-content:space-between;margin-top:4px;font-size:0.85rem;\"><span style=\"color:#888;\">Cod: "+p.code+"</span><span style=\"color:"+stockColor+";font-weight:bold;\">Estoque: "+p.stock+"</span></div></div>";
+  });
+  container.innerHTML=html;
+}
+
+function showProductDetails(code,name,stock){
+  var stockColor=stock>0?(stock<=5?"var(--warning)":"var(--success)"):"var(--danger)";
+  var stockText=stock===0?"SEM ESTOQUE":stock+" unidades";
+  var safeName=name.replace(/'/g,"\\'");
+  document.getElementById("searchResults").innerHTML="<div class=\"result-card found\"><div class=\"product-name\">"+name+"</div><div class=\"product-meta\"><span>Cod: "+code+"</span></div><div class=\"stock-display\" style=\"color:"+stockColor+"\">"+stockText+"</div><button class=\"btn-benefits\" onclick=\"fetchProductBenefits('"+safeName+"')\">Ver Beneficios e Argumentos de Venda</button><div id=\"benefitsContainer\"></div><button class=\"action-btn\" style=\"width:100%;margin-top:1rem;background:#666;\" onclick=\"performSearch()\">Voltar para busca</button></div>";
+}
+
+function handleInvSearch(e){if(e.key==="Enter")performInvSearch();}
+
+function performInvSearch(){
+  var term=document.getElementById("invSearchInput").value.trim();
+  var container=document.getElementById("invSearchResults");
+  if(term.length<2){container.innerHTML="<div class=\"empty-state\">Digite codigo ou nome (min. 2 caracteres)</div>";return;}
+  var results=[];var termLower=term.toLowerCase();
+  for(var code in productsDB){
+    var data=productsDB[code];
+    if(code===term||code.toLowerCase().indexOf(termLower)>=0||data.name.toLowerCase().indexOf(termLower)>=0){
+      if(code.indexOf("INT_")===0){var dup=false;for(var i=0;i<results.length;i++){if(results[i].name===data.name){dup=true;break;}}if(dup)continue;}
+      results.push({code:code,name:data.name,stock:data.stock,price:data.price});
+    }
+    if(results.length>=15)break;
+  }
+  if(results.length===0){container.innerHTML="<div class=\"empty-state\">Nenhum produto encontrado</div>";return;}
+  if(results.length===1){showInvEditor(results[0].code,results[0]);container.innerHTML="";return;}
+  var html="<div style=\"margin-bottom:0.5rem;font-size:0.8rem;color:#666;\">"+results.length+" resultados - toque para corrigir</div>";
+  results.forEach(function(p){
+    var alreadyCorrected=inventoryCorrections[p.code];
+    var badge=alreadyCorrected?"<span style=\"background:var(--inventory);color:white;padding:2px 8px;border-radius:10px;font-size:0.7rem;margin-left:0.5rem;\">Corrigido: "+alreadyCorrected.newStock+"</span>":"";
+    var safeP=JSON.stringify(p).replace(/"/g,"&quot;");
+    html+="<div class=\"list-item\" style=\"border-left-color:var(--inventory);\" onclick='showInvEditor(&quot;"+p.code+"&quot;,"+safeP+")'><div style=\"font-weight:600;font-size:0.9rem;\">"+p.name+badge+"</div><div style=\"display:flex;justify-content:space-between;margin-top:4px;font-size:0.85rem;\"><span style=\"color:#888;\">Cod: "+p.code+"</span><span style=\"color:#666;\">Estoque atual: <strong>"+p.stock+"</strong></span></div></div>";
+  });
+  container.innerHTML=html;
+}
+
+function showInvEditor(code,product){
+  var container=document.getElementById("invEditArea");
+  var existing=inventoryCorrections[code];
+  var currentStock=parseInt(product.stock)||0;
+  var correctedValue=existing?existing.newStock:"";
+  var validityValue=existing&&existing.validity?existing.validity:"";
+  var safeName=product.name.replace(/'/g,"\\'");
+  var h="<div class=\"inv-edit-card\">";
+  h+="<div class=\"product-name\">"+product.name+"</div>";
+  h+="<div class=\"product-meta\"><span>Cod: "+code+"</span><span>"+(product.price?"R$ "+product.price:"")+"</span></div>";
+  h+="<div class=\"inv-stock-row\">";
+  h+="<div class=\"inv-stock-box\"><label>No Sistema</label><div class=\"value\" style=\"color:#888;\">"+currentStock+"</div></div>";
+  h+="<div class=\"inv-arrow\">&#8594;</div>";
+  h+="<div class=\"inv-stock-box\"><label>Quantidade Real</label><input type=\"number\" id=\"invNewStock\" value=\""+correctedValue+"\" min=\"0\" inputmode=\"numeric\" placeholder=\"0\"></div>";
+  h+="</div>";
+  h+="<div class=\"inv-validity-row\"><label>Validade (Mes/Ano)</label><input type=\"month\" id=\"invValidity\" value=\""+validityValue+"\"></div>";
+  h+="<button class=\"btn-save-inv\" onclick=\"saveInvCorrection('"+code+"','"+safeName+"',"+currentStock+")\">Salvar Correcao</button>";
+  h+="</div>";
+  container.innerHTML=h;
+  setTimeout(function(){var inp=document.getElementById("invNewStock");if(inp){inp.focus();inp.select();}},100);
+}
+
+function showManualAddOption(scannedCode){
+  var container=document.getElementById("invManualArea");
+  manualPhotos=[];
+  var h="<div class=\"manual-add-card\">";
+  h+="<h3>Produto nao encontrado</h3>";
+  h+="<p style=\"font-size:0.85rem;color:#666;margin-bottom:1rem;\">Codigo lido: <strong>"+scannedCode+"</strong></p>";
+  h+="<div class=\"photo-upload-area\" onclick=\"document.getElementById('photoInput').click()\">";
+  h+="<div class=\"icon\">&#128247;</div>";
+  h+="<p>Toque para tirar fotos do produto e da embalagem</p>";
+  h+="</div>";
+  h+="<input type=\"file\" id=\"photoInput\" accept=\"image/*\" capture=\"environment\" multiple style=\"display:none\" onchange=\"handlePhotoSelect(this)\">";
+  h+="<div class=\"photo-preview-grid\" id=\"photoPreviewGrid\"></div>";
+  h+="<div id=\"ocrStatus\"></div>";
+  h+="<button class=\"btn-analyze-photos\" id=\"btnAnalyze\" onclick=\"analyzePhotos(this.dataset.code)\" data-code=\""+scannedCode+"\" disabled>Analisar Fotos com IA</button>";
+  h+="<div class=\"manual-form-field\"><label>Codigo de Barras (EAN)</label><input type=\"text\" id=\"manualBarcode\" value=\""+scannedCode+"\"></div>";
+  h+="<div class=\"manual-form-field\"><label>Nome do Produto (Marca + Tipo + Tamanho)</label><textarea id=\"manualName\" rows=\"3\" placeholder=\"Ex: Shampoo Seda Cachos Comportados 350ml\"></textarea></div>";
+  h+="<div class=\"manual-form-field\"><label>Quantidade em Estoque</label><input type=\"number\" id=\"manualStock\" min=\"0\" inputmode=\"numeric\" placeholder=\"0\"></div>";
+  h+="<div class=\"manual-form-field\"><label>Validade (Mes/Ano)</label><input type=\"month\" id=\"manualValidity\"></div>";
+  h+="<button class=\"btn-save-inv\" onclick=\"saveManualProduct()\">Salvar Produto Manualmente</button>";
+  h+="</div>";
+  container.innerHTML=h;
+}
+
+function handlePhotoSelect(input){
+  var files=input.files;
+  if(!files||files.length===0)return;
+  for(var i=0;i<files.length;i++){
+    var reader=new FileReader();
+    reader.onload=function(e){
+      manualPhotos.push(e.target.result);
+      renderPhotoPreviews();
+    };
+    reader.readAsDataURL(files[i]);
+  }
+  document.getElementById("btnAnalyze").disabled=false;
+}
+
+function renderPhotoPreviews(){
+  var grid=document.getElementById("photoPreviewGrid");
+  if(!grid)return;
+  var h="";
+  for(var i=0;i<manualPhotos.length;i++){
+    h+="<div class=\"photo-preview-item\"><img src=\""+manualPhotos[i]+"\" alt=\"Foto "+(i+1)+"\">";
+    h+="<button class=\"remove-photo\" onclick=\"removePhoto("+i+")\">&times;</button></div>";
+  }
+  grid.innerHTML=h;
+}
+
+function removePhoto(index){
+  manualPhotos.splice(index,1);
+  renderPhotoPreviews();
+  if(manualPhotos.length===0){document.getElementById("btnAnalyze").disabled=true;}
+}
+
+async function analyzePhotos(fallbackCode){
+  var statusEl=document.getElementById("ocrStatus");
+  var btn=document.getElementById("btnAnalyze");
+  if(manualPhotos.length===0){showToast("Tire pelo menos uma foto","error");return;}
+  statusEl.className="ocr-status processing";
+  statusEl.textContent="Analisando "+manualPhotos.length+" foto(s) com IA... Aguarde.";
+  btn.disabled=true;
+  try{
+    var result=await callGeminiOCR(manualPhotos);
+    if(result&&result.barcode){document.getElementById("manualBarcode").value=result.barcode;}
+    if(result&&result.name){document.getElementById("manualName").value=result.name;}
+    statusEl.className="ocr-status success";
+    statusEl.textContent="Analise concluida! Verifique os dados preenchidos.";
+  }catch(err){
+    console.error("Erro OCR:",err);
+    statusEl.className="ocr-status error";
+    statusEl.textContent="Erro na analise automatica. Preencha manualmente os campos abaixo.";
+  }
+  btn.disabled=false;
+}
+
+async function callGeminiOCR(images){
+  var GEMINI_KEY="AIzaSyDm3kfmxJuOPMJPgOp0IpYnJqGOCkjkbxQ";
+  var url="https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key="+GEMINI_KEY;
+  var parts=[];
+  parts.push({text:"Analise estas fotos de um produto cosmetico. Extraia: 1) Codigo de barras EAN-13 (13 digitos), 2) Nome completo do produto incluindo marca, tipo e tamanho/volume. Responda APENAS em formato JSON com as chaves barcode e name. Se nao conseguir ler o codigo de barras, retorne barcode como string vazia."});
+  for(var i=0;i<Math.min(images.length,5);i++){
+    var base64=images[i].split(",")[1];
+    var mime=images[i].split(";")[0].split(":")[1];
+    parts.push({inline_data:{mime_type:mime,data:base64}});
+  }
+  var body={contents:[{parts:parts}]};
+  var resp=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  if(!resp.ok){throw new Error("API error "+resp.status);}
+  var data=await resp.json();
+  var text=data.candidates[0].content.parts[0].text;
+  var jsonMatch=text.match(/\{[\s\S]*\}/);
+  if(jsonMatch){return JSON.parse(jsonMatch[0]);}
+  return {barcode:"",name:text.substring(0,200)};
+}
+
+async function saveManualProduct(){
+  var code=document.getElementById("manualBarcode").value.trim();
+  var name=document.getElementById("manualName").value.trim();
+  var stock=parseInt(document.getElementById("manualStock").value)||0;
+  var validity=document.getElementById("manualValidity").value;
+  if(!code||!name){showToast("Preencha codigo e nome do produto","error");return;}
+  inventoryCorrections[code]={name:name,newStock:stock,validity:validity,oldStock:0,timestamp:new Date().toISOString(),manual:true};
+  saveInventoryToStorage();
+  if(GOOGLE_SCRIPT_URL){
+    try{
+      await fetch(GOOGLE_SCRIPT_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({data:new Date().toISOString(),codigo:code,nome:name,estoque_real:stock,validade:validity,tipo:"manual"})});
+    }catch(e){console.warn("Erro ao enviar para Google Sheets:",e);}
+  }
+  showToast("Produto salvo: "+name.substring(0,30)+"...","success");
+  document.getElementById("invManualArea").innerHTML="";
+  manualPhotos=[];
+}
+
+async function saveInvCorrection(code,name,oldStock){
+  var newStockInput=document.getElementById("invNewStock");
+  var newStock=parseInt(newStockInput.value);
+  var validity=document.getElementById("invValidity").value;
+  if(isNaN(newStock)||newStock<0){showToast("Digite uma quantidade valida","error");return;}
+  inventoryCorrections[code]={name:name,oldStock:oldStock,newStock:newStock,validity:validity,timestamp:new Date().toISOString()};
+saveInventoryToStorage();
+if(GOOGLE_SCRIPT_URL){
+try{
+await fetch(GOOGLE_SCRIPT_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({data:new Date().toISOString(),codigo:code,nome:name,estoque_real:newStock,validade:validity})});
+console.log("Enviado para Google Sheets");
+}catch(e){console.warn("Erro ao enviar para Google Sheets:",e);}
+}
+showToast("Salvo! "+name.substring(0,25)+"... -> "+newStock+" unid.","success");
+document.getElementById("invEditArea").innerHTML="";
+document.getElementById("invSearchInput").value="";
+document.getElementById("invSearchResults").innerHTML="";
+if(navigator.vibrate)navigator.vibrate(50);
+}
+function renderSavedList(){
+var container=document.getElementById("invSavedList");
+var entries=Object.entries(inventoryCorrections);
+if(entries.length===0){container.innerHTML="<div class=\"empty-state\" style=\"margin-top:1rem;\">Nenhuma correcao salva ainda</div>";return;}
+var html="<div style=\"font-size:0.85rem;color:#666;margin-bottom:0.5rem;font-weight:600;\">Correcoes salvas ("+entries.length+"):</div>";
+entries.slice().reverse().forEach(function(entry){
+var code=entry[0];var data=entry[1];
+var valStr=data.validity?" | Val: "+data.validity:"";
+html+="<div class=\"inv-saved-item\"><div class=\"name\">"+data.name.substring(0,40)+(data.name.length>40?"...":"")+"<br><span style=\"font-size:0.75rem;color:#888;\">Qtd: "+data.newStock+valStr+"</span></div><button class=\"del\" onclick=\"deleteInvCorrection('"+code+"')\">&times;</button></div>";
+});
+container.innerHTML=html;
+}
+function deleteInvCorrection(code){
+delete inventoryCorrections[code];
+saveInventoryToStorage();
+showToast("Correcao removida");
+}
+function clearInventory(){
+if(Object.keys(inventoryCorrections).length===0){showToast("Nada para limpar");return;}
+if(confirm("Tem certeza que deseja limpar TODAS as correcoes salvas?")){
+inventoryCorrections={};
+saveInventoryToStorage();
+showToast("Todas as correcoes foram limpas");
+}
+}
+function exportInventory(){
+var entries=Object.entries(inventoryCorrections);
+if(entries.length===0){showToast("Nenhuma correcao para exportar","error");return;}
+var exportData={metadados:{tipo:"Correcao de Inventario MelLu",data_exportacao:new Date().toISOString(),total_correcoes:entries.length},correcoes:entries.map(function(e){return{codigo:e[0],nome:e[1].name,estoque_real:e[1].newStock,validade:e[1].validity||"",data_correcao:e[1].timestamp};})};
+var jsonStr=JSON.stringify(exportData,null,2);
+var blob=new Blob([jsonStr],{type:"application/json"});
+var url=URL.createObjectURL(blob);
+var a=document.createElement("a");
+a.href=url;
+a.download="inventario_correcoes_"+new Date().toISOString().slice(0,10)+".json";
+document.body.appendChild(a);
+a.click();
+document.body.removeChild(a);
+URL.revokeObjectURL(url);
+showToast(entries.length+" correcoes exportadas!","success");
+}
+function showToast(msg,type){
+var existing=document.querySelector(".toast");
+if(existing)existing.remove();
+var toast=document.createElement("div");
+toast.className="toast "+(type||"");
+toast.textContent=msg;
+document.body.appendChild(toast);
+setTimeout(function(){toast.remove();},3500);
+}
+init();
+</script>
+</body>
+</html>
+
