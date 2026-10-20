@@ -12,6 +12,7 @@ export default async function(req){
   if(!upstream.ok||!result)return reply({ok:false,error:"O Google não confirmou o recebimento. O registro continua pendente."},502);
   if(result.ok!==true)return reply({ok:false,error:result.message||"A planilha recusou o registro."},result.status==="conflict"?409:502);
   if(result.request_id!==d.request_id)return reply({ok:false,error:"A planilha ainda não confirmou o ID deste envio. O registro permanece pendente."},502);
+  if(!result.legacy&&(result.pagina1!==true||result.historico!==true))return reply({ok:false,error:"A gravação nas duas abas ainda não foi confirmada. O envio permanece pendente."},502);
   return reply(result);
  }catch(e){return reply({ok:false,error:e.name==="TimeoutError"?"O Google demorou para responder. O registro continua pendente.":"Falha de conexão com a planilha. O registro continua pendente."},502);}
 }
