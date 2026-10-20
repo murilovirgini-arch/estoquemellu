@@ -563,7 +563,15 @@ function preparePhoto(file){
         var canvas=document.createElement("canvas");
         canvas.width=Math.round(img.width*scale);canvas.height=Math.round(img.height*scale);
         canvas.getContext("2d").drawImage(img,0,0,canvas.width,canvas.height);
-        resolve(canvas.toDataURL("image/jpeg",0.85));
+        var quality=0.85,data=canvas.toDataURL("image/jpeg",quality);
+        while(data.length>650000&&quality>0.5){quality-=0.1;data=canvas.toDataURL("image/jpeg",quality);}
+        while(data.length>650000&&canvas.width>800){
+          var next=document.createElement("canvas");
+          next.width=Math.round(canvas.width*0.85);next.height=Math.round(canvas.height*0.85);
+          next.getContext("2d").drawImage(canvas,0,0,next.width,next.height);
+          canvas=next;data=canvas.toDataURL("image/jpeg",0.75);
+        }
+        resolve(data);
       }catch(e){reject(e);}finally{URL.revokeObjectURL(url);}
     };
     img.onerror=function(){URL.revokeObjectURL(url);reject(new Error("Não foi possível abrir esta foto. Tente uma foto JPEG ou PNG."));};
