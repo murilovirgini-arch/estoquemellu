@@ -310,11 +310,34 @@ function handleManualBarcode(){
   if(code){processLookupMain(code);document.getElementById("manualBarcode").value="";}
 }
 
+function normalizeProductCode(value){
+  var code=String(value||"").trim();
+  return /^[\d\s-]+$/.test(code)?code.replace(/\D/g,""):code;
+}
+function openNewProduct(value){
+  var term=normalizeProductCode(value);
+  stopCameraMain();stopCameraInv();
+  switchTab("inventory");
+  document.getElementById("invEditArea").innerHTML="";
+  document.getElementById("invSearchResults").innerHTML="";
+  document.getElementById("invSearchInput").value=term;
+  var code=/^\d+$/.test(term)?term:"";
+  var existing=document.getElementById("newProductBarcode");
+  if(!existing||existing.value!==code){
+    showManualAddOption(code);
+    if(!code)document.getElementById("manualName").value=term;
+  }
+  setTimeout(function(){
+    document.getElementById("invSearchInput").blur();
+    document.getElementById("invManualArea").scrollIntoView({behavior:"smooth",block:"start"});
+  },180);
+}
 function processLookupMain(code){
+  code=normalizeProductCode(code);
   var container=document.getElementById("scannerResult");
   var product=productsDB[code];
   if(product){renderProductCardMain(container,product,code);}
-  else{container.innerHTML="<div class=\"result-card not-found\"><div class=\"product-name\">Codigo nao encontrado na base</div><div class=\"product-meta\">Codigo lido: "+code+"</div><p style=\"font-size:0.9rem;color:#666;margin-top:10px;\">Tente buscar pelo <strong>NOME</strong> na aba ao lado.</p><button class=\"action-btn\" style=\"width:100%;margin-top:10px;\" onclick=\"switchTab('search')\">Ir para Busca por Nome</button></div>";}
+  else{container.innerHTML="";openNewProduct(code);}
 }
 
 function renderProductCardMain(container,product,code){
@@ -401,12 +424,13 @@ async function stopCameraInv(){
 }
 
 function onScanInv(decodedText){
+  decodedText=normalizeProductCode(decodedText);
   if(cooldownInv||decodedText===lastScannedInv)return;
   lastScannedInv=decodedText;cooldownInv=true;
   if(navigator.vibrate)navigator.vibrate(100);
   var product=productsDB[decodedText];
   if(product){showInvEditor(decodedText,product);document.getElementById("invSearchInput").value=decodedText;}
-  else{showManualAddOption(decodedText);}
+  else{openNewProduct(decodedText);}
   setTimeout(function(){cooldownInv=false;lastScannedInv="";},2000);
 }
 
@@ -465,7 +489,7 @@ function showProductDetails(code,name,stock){
 function handleInvSearch(e){if(e.key==="Enter")performInvSearch();}
 
 function performInvSearch(){
-  var term=document.getElementById("invSearchInput").value.trim();
+  var term=normalizeProductCode(document.getElementById("invSearchInput").value);
   var container=document.getElementById("invSearchResults");
   if(term.length<2){container.innerHTML="<div class=\"empty-state\">Digite codigo ou nome (min. 2 caracteres)</div>";return;}
   var results=[];var termLower=term.toLowerCase();
@@ -477,7 +501,7 @@ function performInvSearch(){
     }
     if(results.length>=15)break;
   }
-  if(results.length===0){container.innerHTML="<div class=\"empty-state\">Nenhum produto encontrado</div>";return;}
+  if(results.length===0){openNewProduct(term);return;}
   if(results.length===1){showInvEditor(results[0].code,results[0]);container.innerHTML="";return;}
   var html="<div style=\"margin-bottom:0.5rem;font-size:0.8rem;color:#666;\">"+results.length+" resultados - toque para corrigir</div>";
   results.forEach(function(p){
@@ -490,6 +514,8 @@ function performInvSearch(){
 }
 
 function showInvEditor(code,product){
+  document.getElementById("invManualArea").innerHTML="";
+  manualPhotos=[];
   var container=document.getElementById("invEditArea");
   var existing=inventoryCorrections[code];
   var currentStock=parseInt(product.stock)||0;
