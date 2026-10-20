@@ -31,7 +31,7 @@ export default async function(request){
     return reply({barcode,name:String(data.name||"").slice(0,400),validity});
   }catch(e){
     const status=Number(e.status);
-    console.error("Product OCR failed",{status:status||500,type:e.name});
+    console.error("Product OCR failed",{status:status||500,type:e.name,code:e.code,param:e.param,message:String(e.error?.message||e.message||"").replace(/data:image[^\s"]+/g,"[image]").slice(0,500)});
     if(status===429)return reply({error:"Limite temporário da IA atingido. Tente novamente em alguns minutos."},429);
     if(status===401||status===403)return reply({error:"A integração de IA precisa ser habilitada na Netlify."},503);
     return reply({error:"Não foi possível analisar as fotos agora. Tente novamente."},502);
